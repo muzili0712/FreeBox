@@ -8,6 +8,7 @@ import io.knifer.freebox.util.json.GsonUtil;
 import javafx.application.Platform;
 import javafx.scene.text.Font;
 import lombok.experimental.UtilityClass;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 
 import java.io.IOException;
@@ -29,6 +30,8 @@ public class ConfigHelper {
     private volatile static Config config;
 
     private static final AtomicBoolean updateFlag = new AtomicBoolean(false);
+
+    private static final String PROXY_URL_F = "http://%s:%d/";
 
     public synchronized void setServiceIPv4(String serviceIPv4) {
         assertIfConfigLoaded();
@@ -204,6 +207,21 @@ public class ConfigHelper {
     public synchronized void setVideoPlaybackTrigger(VideoPlaybackTrigger videoPlaybackTrigger) {
         assertIfConfigLoaded();
         config.setVideoPlaybackTrigger(videoPlaybackTrigger);
+    }
+
+    public String getProxyUrl(boolean local) {
+        String ip;
+
+        if (local) {
+            ip = "127.0.0.1";
+        } else {
+            ip = getServiceIPv4();
+            if (StringUtils.isBlank(ip) || BaseValues.ANY_LOCAL_IP.equals(ip)) {
+                ip = "127.0.0.1";
+            }
+        }
+
+        return String.format(PROXY_URL_F, ip, getHttpPort());
     }
 
     private void assertIfConfigLoaded() {

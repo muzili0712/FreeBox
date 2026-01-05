@@ -10,11 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 
-import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-
 /**
  * ts分片代理
  * 用于ts分片有非标准文件头的情况
@@ -46,22 +41,15 @@ public class ProxyTsHandler implements HttpHandler {
     }
 
     private byte[] fixTSHeader(String tsUrl) {
-        HttpRequest request;
         byte[] data;
         boolean needFix;
         byte[] fixedData;
 
         try {
-            request = HttpRequest.newBuilder()
-                    .uri(URI.create(tsUrl))
-                    .header(HttpHeaders.USER_AGENT, BaseValues.USER_AGENT)
-                    .header("Accept", "*/*")
-                    .timeout(Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-            data = HttpUtil.getClient()
-                    .send(request, HttpResponse.BodyHandlers.ofByteArray())
-                    .body();
+            data = HttpUtil.getFile(
+                    tsUrl,
+                    HttpHeaders.USER_AGENT, BaseValues.USER_AGENT, HttpHeaders.ACCEPT, "*/*"
+            );
         } catch (Exception e) {
             log.info("fetch ts content failed", e);
 

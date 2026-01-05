@@ -1,7 +1,6 @@
 module io.knifer.freebox {
     requires java.sql;
     requires java.desktop;
-    requires java.net.http;
     requires jdk.httpserver;
 
     requires javafx.controls;
@@ -24,14 +23,22 @@ module io.knifer.freebox {
     requires filelize;
     requires com.fasterxml.jackson.databind;
     requires okhttp3;
-    requires kotlin.stdlib;
     requires annotations;
-    requires org.json;
-    requires cn.hutool;
+    requires cn.hutool.core;
+    requires cn.hutool.crypto;
+    requires cn.hutool.http;
+    requires cn.hutool.json;
     requires net.bjoernpetersen.m3u;
     requires mpv;
     requires ipcsocket;
     requires emojiJava;
+    requires org.graalvm.polyglot;
+    requires org.graalvm.js;
+
+    // for spiders
+    requires kotlin.stdlib;
+    requires kotlinx.coroutines.core;
+    requires org.json;
 
     requires static lombok;
     requires org.jsoup;
@@ -50,6 +57,7 @@ module io.knifer.freebox {
     exports io.knifer.freebox.model.bo;
     exports io.knifer.freebox.spider;
     exports io.knifer.freebox.component.factory;
+    opens com.fongmi.quickjs.bean to com.google.gson;
     opens io.knifer.freebox to javafx.fxml;
     opens io.knifer.freebox.controller to javafx.fxml;
     opens io.knifer.freebox.controller.dialog to javafx.fxml;

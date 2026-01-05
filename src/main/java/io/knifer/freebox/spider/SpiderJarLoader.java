@@ -2,11 +2,12 @@ package io.knifer.freebox.spider;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.crypto.digest.DigestUtil;
-import com.github.catvod.spider.Spider;
+import com.github.catvod.crawler.spider.Spider;
 import io.knifer.freebox.constant.I18nKeys;
 import io.knifer.freebox.helper.StorageHelper;
 import io.knifer.freebox.helper.ToastHelper;
 import io.knifer.freebox.model.domain.FreeBoxApiConfig;
+import io.knifer.freebox.spider.js.JSSpider;
 import io.knifer.freebox.util.CastUtil;
 import io.knifer.freebox.util.HttpUtil;
 import io.knifer.freebox.util.catvod.SpiderInvokeUtil;
@@ -42,6 +43,7 @@ public class SpiderJarLoader {
     private final ConcurrentHashMap<String, URLClassLoader> loaders = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Method> methods = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> spiders = new ConcurrentHashMap<>();
+    @Setter
     private String recent = null;
     @Setter
     private FreeBoxApiConfig apiConfig = null;
@@ -68,36 +70,55 @@ public class SpiderJarLoader {
 
     public Object getSpider(String key, String api, String ext, String jar) {
         try {
-            String jaKey = DigestUtil.md5Hex(jar);
+            boolean jsFlag = api.endsWith(".js");
+            String jaKey = DigestUtil.md5Hex(jsFlag ? api : jar);
             String spKey = jaKey + key;
+            Object spider;
 
             if (spiders.containsKey(spKey)) {
                 return spiders.get(spKey);
             }
-            if (loaders.get(jaKey) == null) {
-                if (!loadJar(jaKey, jar)) {
-                    return new Spider();
-                }
-            }
             recent = jaKey;
-            URLClassLoader loader = loaders.get(jaKey);
-            if (loader == null) {
-                return new Spider();
+            if (jsFlag) {
+                spider = spiders.get(jaKey);
+                if (spider == null) {
+                    if (!loadJar(jaKey, api, true)) {
+                        return Spider.getEmpty();
+                    }
+                    spider = spiders.get(jaKey);
+                    if (spider == null) {
+                        log.error(
+                                "loadJar succeed, but spider is null. key={}, api={}, ext={}, jar={}",
+                                key, api, ext, jar
+                        );
+                        return Spider.getEmpty();
+                    }
+                }
+            } else {
+                if (loaders.get(jaKey) == null) {
+                    if (!loadJar(jaKey, jar, false)) {
+                        return Spider.getEmpty();
+                    }
+                }
+                URLClassLoader loader = loaders.get(jaKey);
+                if (loader == null) {
+                    return Spider.getEmpty();
+                }
+                String classPath = SPIDER_PACKAGE_NAME + api.replace("csp_", ".");
+                spider = loader.loadClass(classPath).getDeclaredConstructor().newInstance();
+                SpiderInvokeUtil.init(spider, ext);
+                spiders.put(spKey, spider);
             }
-            String classPath = SPIDER_PACKAGE_NAME + api.replace("csp_", ".");
-            Object spider = loader.loadClass(classPath).getDeclaredConstructor().newInstance();
-            SpiderInvokeUtil.init(spider, ext);
-            spiders.put(spKey, spider);
 
             return spider;
         } catch (Exception e){
             Platform.runLater(() -> ToastHelper.showException(e));
 
-            return new Spider();
+            return Spider.getEmpty();
         }
     }
 
-    public boolean loadJar(String key, String spider) {
+    public boolean loadJar(String key, String spider, boolean jsFlag) {
         String[] texts;
         String md5;
         String jar;
@@ -112,12 +133,12 @@ public class SpiderJarLoader {
         jar = texts[0];
 
         // 可以避免重复下载
-        if(!md5.isEmpty() && Objects.equals(parseJarUrl(jar), md5)){
+        if (!md5.isEmpty() && Objects.equals(parseJarUrl(jar), md5)) {
 
-            return load(key, Paths.get(parseJarUrl(jar)));
-        }else if (jar.startsWith("file")) {
+            return load(key, Paths.get(parseJarUrl(jar)), jsFlag);
+        } else if (jar.startsWith("file")) {
 
-            return load(key, Paths.get(jar.replace("file:///", StringUtils.EMPTY)));
+            return load(key, Paths.get(jar.replace("file:///", StringUtils.EMPTY)), jsFlag);
         } else if (jar.startsWith("http")) {
             jarPath = download(jar);
             if (jarPath == null) {
@@ -125,15 +146,18 @@ public class SpiderJarLoader {
                 return false;
             }
 
-            return load(key, jarPath);
+            return load(key, jarPath, jsFlag);
+        } else if (jar.startsWith("assets")) {
+
+            return load(key, Paths.get(jar.replace("assets://", StringUtils.EMPTY)), jsFlag);
         } else {
 
-            return loadJar(key, convertUrl(apiConfig.getUrl(), jar));
+            return loadJar(key, convertUrl(apiConfig.getUrl(), jar), jsFlag);
         }
     }
 
     /**
-     * 如果在配置文件种使用的相对路径，下载的时候使用的全路径 如果的判断md5是否一致的时候使用相对路径 就会造成重复下载
+     * 解析jar路径为绝对路径
      */
     private String parseJarUrl(String jar) {
         if (jar.startsWith("file") || jar.startsWith("http")) {
@@ -156,27 +180,35 @@ public class SpiderJarLoader {
         }
     }
 
-    private boolean load(String key, Path jar) {
+    private boolean load(String key, Path jar, boolean jsFlag) {
+        JSSpider jsSpider;
+
         log.info("load jar {}", jar);
-        if (!isJarAvailable(jar)) {
-            log.info("invalid jar: {}", jar);
-            Platform.runLater(() -> ToastHelper.showErrorAlert(
-                    I18nKeys.ERROR,
-                    I18nKeys.TV_ERROR_INVALID_SPIDER_JAR,
-                    null
-            ));
+        if (jsFlag) {
+            jsSpider = new JSSpider(key, jar);
+            spiders.put(key, jsSpider);
+            invokeInit(jsSpider);
+        } else {
+            if (!isJarAvailable(jar)) {
+                log.info("invalid jar: {}", jar);
+                Platform.runLater(() -> ToastHelper.showErrorAlert(
+                        I18nKeys.ERROR,
+                        I18nKeys.TV_ERROR_INVALID_SPIDER_JAR,
+                        null
+                ));
 
-            return false;
-        }
-        try {
-            loaders.put(key, new URLClassLoader(new URL[]{jar.toUri().toURL()}, this.getClass().getClassLoader()));
-        } catch (MalformedURLException e) {
-            Platform.runLater(() -> ToastHelper.showException(e));
+                return false;
+            }
+            try {
+                loaders.put(key, new URLClassLoader(new URL[]{jar.toUri().toURL()}, this.getClass().getClassLoader()));
+            } catch (MalformedURLException e) {
+                Platform.runLater(() -> ToastHelper.showException(e));
 
-            return false;
+                return false;
+            }
+            putProxy(key);
+            invokeInit(key);
         }
-        putProxy(key);
-        invokeInit(key);
 
         return true;
     }
@@ -245,6 +277,14 @@ public class SpiderJarLoader {
         }
     }
 
+    private void invokeInit(JSSpider jsSpider) {
+        try {
+            jsSpider.init(null);
+        } catch (Exception e) {
+            Platform.runLater(() -> ToastHelper.showException(e));
+        }
+    }
+
     @Nullable
     private Path download(String jar) {
         log.info("download jar: {}", jar);
@@ -274,6 +314,11 @@ public class SpiderJarLoader {
 
     public void destroy() {
         log.info("destroy SpiderJarLoader......");
+        try {
+            spiders.values().forEach(SpiderInvokeUtil::destroy);
+        } catch (Exception e) {
+            log.warn("destroy spider error", e);
+        }
         for (URLClassLoader classLoader : loaders.values()) {
             try {
                 classLoader.close();

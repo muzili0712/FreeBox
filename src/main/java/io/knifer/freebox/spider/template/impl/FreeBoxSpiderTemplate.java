@@ -2,7 +2,7 @@ package io.knifer.freebox.spider.template.impl;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.crypto.digest.DigestUtil;
-import com.github.catvod.spider.Spider;
+import com.github.catvod.crawler.spider.Spider;
 import com.google.common.base.Charsets;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
@@ -464,7 +464,7 @@ public class FreeBoxSpiderTemplate implements SpiderTemplate {
             Platform.runLater(() -> ToastHelper.showErrorI18n(I18nKeys.TV_ERROR_LOAD_SPIDER_CONFIG_FAILED));
             log.error("load site custom spider error, spider url invalid");
 
-            return new Spider();
+            return Spider.getEmpty();
         }
 
         return spiderJarLoader.getSpider(

@@ -3,10 +3,7 @@ package io.knifer.freebox.helper;
 import cn.hutool.core.util.RuntimeUtil;
 import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinBase;
-import io.knifer.freebox.constant.Architecture;
-import io.knifer.freebox.constant.BaseResources;
-import io.knifer.freebox.constant.BaseValues;
-import io.knifer.freebox.constant.Platform;
+import io.knifer.freebox.constant.*;
 import io.knifer.freebox.exception.FBException;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.lang3.ArchUtils;
@@ -29,6 +26,7 @@ public class SystemHelper {
 
     private final static io.knifer.freebox.constant.Platform CURRENT_PLATFORM;
     private final static Architecture CURRENT_ARCHITECTURE;
+    private final static EnvProfile ENV_PROFILE = EnvProfile.valueOf(System.getProperty("freebox.profile"));
     private final static boolean DEBUG_FLAG = "true".equals(BaseResources.X_PROPERTIES.getProperty(BaseValues.X_DEBUG));
 
     static {
@@ -106,5 +104,9 @@ public class SystemHelper {
 
     public boolean isDebug() {
         return DEBUG_FLAG;
+    }
+
+    public EnvProfile getEnvProfile() {
+        return ENV_PROFILE;
     }
 }

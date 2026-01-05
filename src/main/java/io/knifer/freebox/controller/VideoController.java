@@ -2,6 +2,7 @@ package io.knifer.freebox.controller;
 
 import cn.hutool.core.collection.CollUtil;
 import com.google.common.base.Charsets;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.net.HttpHeaders;
 import com.google.gson.JsonElement;
@@ -48,6 +49,10 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Headers;
+import okhttp3.Request;
+import okhttp3.Response;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -57,10 +62,7 @@ import org.kordamp.ikonli.javafx.FontIcon;
 
 import javax.annotation.Nullable;
 import java.net.URLDecoder;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -471,14 +473,7 @@ public class VideoController extends BaseController implements Destroyable {
                         elm = propsObj.get("jx");
                         jx = elm == null ? 0 : elm.getAsInt();
                         elm = propsObj.get("header");
-                        if (elm == null) {
-                            headers = Map.of();
-                        } else {
-                            headers = Maps.transformValues(
-                                    GsonUtil.fromJson(elm.getAsString(), JsonObject.class).asMap(),
-                                    JsonElement::getAsString
-                            );
-                        }
+                        headers = elm == null ? Map.of() : GsonUtil.toStringMap(elm);
                         videoTitle = "《" + video.getName() + "》" + flag + " - " + urlInfoBean.getName();
                         if (parse == 0) {
                             if (ConfigHelper.getAdFilter() && playUrl.contains(".m3u8")) {
@@ -526,10 +521,10 @@ public class VideoController extends BaseController implements Destroyable {
             String playUrl, Map<String, String> headers, Consumer<Pair<Boolean, String>> callback
     ) {
         AsyncUtil.execute(() -> {
-            HttpRequest.Builder requestBuilder;
+            List<String> requestHeaders;
+            Request request;
             M3u8AdFilterResult result;
             String content;
-            HttpResponse<String> resp;
             Map<String, List<String>> proxyHeaders = null;
             boolean isAdFiltered = false;
             String playUrlForTsProxy;
@@ -537,72 +532,71 @@ public class VideoController extends BaseController implements Destroyable {
             Pair<Boolean, String> proxyTsFlagAndProxiedM3u8Content;
             String resultPlayUrl;
 
-            requestBuilder = HttpRequest.newBuilder()
-                    .GET()
-                    .headers(HttpHeaders.USER_AGENT, BaseValues.USER_AGENT)
-                    .uri(HttpUtil.parseUrl(playUrl));
+            requestHeaders = Lists.newArrayList(HttpHeaders.USER_AGENT, BaseValues.USER_AGENT);
             if (!headers.isEmpty()) {
-                headers.forEach(requestBuilder::header);
+                headers.forEach((k, v) -> {
+                    requestHeaders.add(k);
+                    requestHeaders.add(v);
+                });
             }
-            try {
-                resp = HttpUtil.getClient()
-                        .sendAsync(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
-                        .get(6, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                // 下载m3u8失败，直接返回原地址
-                callback.accept(Pair.of(false, playUrl));
-
-                return;
-            }
-            proxyUrlPrefix = createProxyUrlPrefix();
-            // 处理m3u8广告过滤
-            try {
-                content = resp.body();
-                result = m3u8AdFilterHandler.handle(
-                        playUrl,
-                        content,
-                        Map.of(SmartM3u8AdFilterHandler.EXTRA_KEY_DTF, ConfigHelper.getAdFilterDynamicThresholdFactor())
-                );
-                isAdFiltered = result.getAdLineCount() > 0;
-                if (isAdFiltered) {
-                    content = result.getContent();
-                    proxyHeaders = Maps.filterKeys(
-                            resp.headers().map(), key -> !HTTP_HEADERS_PROXY_EXCLUDE.contains(key)
+            request = new Request.Builder()
+                    .url(HttpUtil.parseUrl(playUrl))
+                    .headers(Headers.of(requestHeaders.toArray(ArrayUtils.EMPTY_STRING_ARRAY)))
+                    .build();
+            try (
+                    Response resp = HttpUtil.getClient()
+                            .newCall(request)
+                            .execute()
+            ) {
+                proxyUrlPrefix = ConfigHelper.getProxyUrl(true);
+                content = resp.body().string();
+                // 处理m3u8广告过滤
+                try {
+                    result = m3u8AdFilterHandler.handle(
+                            playUrl,
+                            content,
+                            Map.of(SmartM3u8AdFilterHandler.EXTRA_KEY_DTF, ConfigHelper.getAdFilterDynamicThresholdFactor())
                     );
-                }
-                playUrlForTsProxy = isAdFiltered ? proxyM3u8(content, proxyUrlPrefix, proxyHeaders) : playUrl;
-            } catch (Exception e) {
-                log.warn("filter ad exception", e);
-                content = resp.body();
-                playUrlForTsProxy = playUrl;
-            }
-            // 处理损坏文件头的ts代理
-            try {
-                proxyTsFlagAndProxiedM3u8Content =
-                        m3u8TsProxyHandler.handle(
-                                playUrlForTsProxy, content, proxyUrlPrefix + "/proxy/ts/"
-                        );
-                if (proxyTsFlagAndProxiedM3u8Content.getLeft()) {
-                    content = proxyTsFlagAndProxiedM3u8Content.getRight();
-                    if (proxyHeaders == null) {
+                    isAdFiltered = result.getAdLineCount() > 0;
+                    if (isAdFiltered) {
+                        content = result.getContent();
                         proxyHeaders = Maps.filterKeys(
-                                resp.headers().map(), key -> !HTTP_HEADERS_PROXY_EXCLUDE.contains(key)
+                                resp.headers().toMultimap(), key -> !HTTP_HEADERS_PROXY_EXCLUDE.contains(key)
                         );
                     }
-                    resultPlayUrl = proxyM3u8(content, proxyUrlPrefix, proxyHeaders);
-                } else {
+                    playUrlForTsProxy = isAdFiltered ? proxyM3u8(content, proxyUrlPrefix, proxyHeaders) : playUrl;
+                } catch (Exception e) {
+                    log.warn("filter ad exception", e);
+                    playUrlForTsProxy = playUrl;
+                }
+                // 处理损坏文件头的ts代理
+                try {
+                    proxyTsFlagAndProxiedM3u8Content =
+                            m3u8TsProxyHandler.handle(
+                                    playUrlForTsProxy, content, proxyUrlPrefix + "proxy/ts/"
+                            );
+                    if (proxyTsFlagAndProxiedM3u8Content.getLeft()) {
+                        content = proxyTsFlagAndProxiedM3u8Content.getRight();
+                        if (proxyHeaders == null) {
+                            proxyHeaders = Maps.filterKeys(
+                                    resp.headers().toMultimap(), key -> !HTTP_HEADERS_PROXY_EXCLUDE.contains(key)
+                            );
+                        }
+                        resultPlayUrl = proxyM3u8(content, proxyUrlPrefix, proxyHeaders);
+                    } else {
+                        resultPlayUrl = playUrlForTsProxy;
+                    }
+                } catch (Exception e) {
+                    log.warn("proxy ts exception", e);
                     resultPlayUrl = playUrlForTsProxy;
                 }
+                callback.accept(Pair.of(isAdFiltered, resultPlayUrl));
             } catch (Exception e) {
-                log.warn("proxy ts exception", e);
-                resultPlayUrl = playUrlForTsProxy;
+                // 下载m3u8失败，直接返回原地址
+                log.warn("download m3u8 exception", e);
+                callback.accept(Pair.of(false, playUrl));
             }
-            callback.accept(Pair.of(isAdFiltered, resultPlayUrl));
         });
-    }
-
-    private String createProxyUrlPrefix() {
-        return "http://127.0.0.1:" + ConfigHelper.getHttpPort();
     }
 
     /**
@@ -613,7 +607,7 @@ public class VideoController extends BaseController implements Destroyable {
      * @return 代理链接
      */
     private String proxyM3u8(String m3u8Content, String proxyUrlPrefix, Map<String, List<String>> proxyHeaders) {
-        String proxyUrl = proxyUrlPrefix + "/proxy-cache/" + CacheKeys.AD_FILTERED_M3U8;
+        String proxyUrl = proxyUrlPrefix + "proxy-cache/" + CacheKeys.AD_FILTERED_M3U8;
 
         CacheHelper.put(CacheKeys.AD_FILTERED_M3U8, m3u8Content);
         CacheHelper.put(
