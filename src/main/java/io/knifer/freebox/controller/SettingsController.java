@@ -610,6 +610,10 @@ public class SettingsController {
             Pair<Stage, UpgradeDialogController> stageAndController;
 
             checkUpgradeButton.setDisable(false);
+            if (upgradeCheckResult == null) {
+
+                return;
+            }
             if (!upgradeCheckResult.isHasNewVersion()) {
                 alreadyLatestVersionLabel.setVisible(true);
 

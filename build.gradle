@@ -192,7 +192,7 @@ run {
             '--add-exports=javafx.base/com.sun.javafx.event=org.controlsfx.controls',
             '--add-opens=org.controlsfx.controls/org.controlsfx.control=io.knifer.freebox',
             '--add-opens=javafx.graphics/javafx.scene=org.controlsfx.controls',
-            '--add-opens=javafx.graphics/javafx.scene.text=cn.hutool'
+            '--add-opens=javafx.graphics/javafx.scene.text=cn.hutool.core'
     ]
     if (gradle.startParameter.taskNames.contains('jpackage')) {
         jvmArgs += [
