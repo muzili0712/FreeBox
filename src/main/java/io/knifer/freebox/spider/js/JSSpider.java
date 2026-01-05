@@ -26,7 +26,6 @@ import java.util.concurrent.*;
 public class JSSpider extends Spider {
 
     private final Path jar;
-    private ExecutorService executor;
     private Context context;
     private Value spiderObject;
     private Value jsonParseFunction;
@@ -43,10 +42,9 @@ public class JSSpider extends Spider {
     public void init(String extend) throws Exception {
         boolean catFlag;
 
-        this.executor = Executors.newSingleThreadExecutor();
         catFlag = initializeJS();
         if (catFlag) {
-            call("init", submit(() -> cfg(extend)).get(SUBMIT_TIMEOUT, TimeUnit.SECONDS));
+            call("init", cfg(extend));
         } else {
             call("init", GsonUtil.isJson(extend) ? jsonParseFunction.execute(extend) : extend);
         }
@@ -121,14 +119,12 @@ public class JSSpider extends Spider {
     private Object call(String function, Object... args) throws Exception {
         CompletableFuture<Object> result = new CompletableFuture<>();
 
-        executor.execute(() ->
-            Promise.of(spiderObject.invokeMember(function, args), String.class)
-                    .then(result::complete)
-                    .catchError(error -> {
-                        log.error("call '{}' failed, errorMessage={}", function, error);
-                        result.complete(StringUtils.EMPTY);
-                    })
-        );
+        Promise.of(spiderObject.invokeMember(function, args), String.class)
+                .then(result::complete)
+                .catchError(error -> {
+                    log.error("call '{}' failed, errorMessage={}", function, error);
+                    result.complete(StringUtils.EMPTY);
+                });
 
         return result.get(SUBMIT_TIMEOUT, TimeUnit.SECONDS);
     }
@@ -139,71 +135,60 @@ public class JSSpider extends Spider {
      * @throws Exception 初始化失败抛出异常
      */
     private boolean initializeJS() throws Exception {
-        return submit(() -> {
-            Path workingDirectory = BaseResources.JS_SPIDER_WORKING_DIRECTORY;
-            boolean catFlag = false;
-            Value global;
-            String spiderJsCode;
-            Source spiderSource;
-            Value spiderModule;
-            Value spiderExport;
+        Path workingDirectory = BaseResources.JS_SPIDER_WORKING_DIRECTORY;
+        boolean catFlag = false;
+        Value global;
+        String spiderJsCode;
+        Source spiderSource;
+        Value spiderModule;
+        Value spiderExport;
 
-            context = Context.newBuilder("js")
-                    .allowIO(IOAccess.ALL)
-                    .allowHostAccess(HostAccess.ALL)
-                    .currentWorkingDirectory(workingDirectory)
-                    .option("js.esm-eval-returns-exports", "true")
-                    .build();
-            // 初始化JS本地缓存库
-            global = context.getBindings("js");
-            global.putMember("local", new Local());
-            // 初始化JS全局变量
-            JSGlobal.init(context, executor);
-            log.info("initialize GraalJs context succeed");
-            // 初始化JS爬虫
-            spiderJsCode = Files.readString(jar);
-            log.info("initialize js spider......\njs code size: {}", spiderJsCode.length());
-            spiderSource = Source.newBuilder("js", spiderJsCode, jar.getFileName().toString())
-                    .mimeType("application/javascript+module")
-                    .build();
-            spiderModule = context.eval(spiderSource);
-            if (!global.hasMember(SPIDER_OBJECT_NAME)) {
-                spiderExport = spiderModule.getMember("__jsEvalReturn");
-                if (spiderExport != null && spiderExport.canExecute()) {
-                    catFlag = true;
-                    global.putMember(SPIDER_OBJECT_NAME, spiderExport.execute());
-                } else if ((spiderExport = spiderModule.getMember("default")) != null) {
-                    if (spiderExport.canExecute()) {
-                        spiderExport = spiderExport.execute();
-                    }
-                    global.putMember(SPIDER_OBJECT_NAME, spiderExport);
-                } else {
-                    global.putMember(SPIDER_OBJECT_NAME, spiderModule);
+        context = Context.newBuilder("js")
+                .allowIO(IOAccess.ALL)
+                .allowHostAccess(HostAccess.ALL)
+                .currentWorkingDirectory(workingDirectory)
+                .option("js.esm-eval-returns-exports", "true")
+                .build();
+        // 初始化JS本地缓存库
+        global = context.getBindings("js");
+        global.putMember("local", new Local());
+        // 初始化JS全局变量
+        JSGlobal.init(context);
+        log.info("initialize GraalJs context succeed");
+        // 初始化JS爬虫
+        spiderJsCode = Files.readString(jar);
+        log.info("initialize js spider......\njs code size: {}", spiderJsCode.length());
+        spiderSource = Source.newBuilder("js", spiderJsCode, jar.getFileName().toString())
+                .mimeType("application/javascript+module")
+                .build();
+        spiderModule = context.eval(spiderSource);
+        if (!global.hasMember(SPIDER_OBJECT_NAME)) {
+            spiderExport = spiderModule.getMember("__jsEvalReturn");
+            if (spiderExport != null && spiderExport.canExecute()) {
+                catFlag = true;
+                global.putMember(SPIDER_OBJECT_NAME, spiderExport.execute());
+            } else if ((spiderExport = spiderModule.getMember("default")) != null) {
+                if (spiderExport.canExecute()) {
+                    spiderExport = spiderExport.execute();
                 }
+                global.putMember(SPIDER_OBJECT_NAME, spiderExport);
+            } else {
+                global.putMember(SPIDER_OBJECT_NAME, spiderModule);
             }
-            spiderObject = global.getMember(SPIDER_OBJECT_NAME);
-            jsonParseFunction = context.eval("js", "JSON.parse");
-            log.info("initialize js spider succeed");
+        }
+        spiderObject = global.getMember(SPIDER_OBJECT_NAME);
+        jsonParseFunction = context.eval("js", "JSON.parse");
+        log.info("initialize js spider succeed");
 
-            return catFlag;
-        }).get(SUBMIT_TIMEOUT, TimeUnit.SECONDS);
+        return catFlag;
     }
 
     @Override
     public void destroy() {
         try {
-            submit(() -> {
-                context.close(true);
-
-                return null;
-            }).get(SUBMIT_TIMEOUT, TimeUnit.SECONDS);
-            executor.shutdownNow();
+            context.close(true);
         } catch (Exception e) {
             log.error("destroy failed", e);
         }
-    }
-
-    private <T> Future<T> submit(Callable<T> callable) {
-        return executor.submit(callable);
     }
 }

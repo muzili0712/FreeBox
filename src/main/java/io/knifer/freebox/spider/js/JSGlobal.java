@@ -30,7 +30,6 @@ import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -44,7 +43,6 @@ public class JSGlobal {
 
     private final Context context;
     private final Value jsJsonStringify;
-    private final ExecutorService executor;
 
     private final static Set<Class<?>> JS_SUPPORTED_JAVA_TYPES = Set.of(
             String.class,
@@ -68,10 +66,9 @@ public class JSGlobal {
             List.class
     );
 
-    public JSGlobal(Context context, ExecutorService executor) {
+    public JSGlobal(Context context) {
         this.context = context;
         this.jsJsonStringify = context.eval("js", "JSON.stringify");
-        this.executor = executor;
     }
 
     private void injectMethodsIntoContext() {
@@ -286,21 +283,15 @@ public class JSGlobal {
         return new Callback() {
             @Override
             public void onResponse(@NotNull Call call, @NotNull Response res) {
-                submit(() -> complete.execute(createSuccessResponse(context, req, res)));
+                complete.execute(createSuccessResponse(context, req, res));
             }
 
             @Override
             public void onFailure(@NotNull Call call, @NotNull IOException e) {
                 log.error("http request failure", e);
-                submit(() -> complete.execute(createEmptyResponse(context)));
+                complete.execute(createEmptyResponse(context));
             }
         };
-    }
-
-    private void submit(Runnable runnable) {
-        if (!executor.isShutdown()) {
-            executor.submit(runnable);
-        }
     }
 
     private Value createSuccessResponse(Context context, Req req, Response res) {
@@ -397,8 +388,8 @@ public class JSGlobal {
         return result;
     }
 
-    public static JSGlobal init(Context context, ExecutorService executor) {
-        JSGlobal result = new JSGlobal(context, executor);
+    public static JSGlobal init(Context context) {
+        JSGlobal result = new JSGlobal(context);
 
         result.injectMethodsIntoContext();
 
