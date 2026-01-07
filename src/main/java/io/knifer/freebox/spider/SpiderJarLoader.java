@@ -88,19 +88,15 @@ public class SpiderJarLoader {
             }
             recent = jaKey;
             if (jsFlag) {
-                spider = spiders.get(jaKey);
+                spider = spiders.get(spKey);
                 if (spider == null) {
-                    if (!loadJar(jaKey, api, true)) {
+                    if (!loadJar(spKey, api, true)) {
                         return Spider.getEmpty();
                     }
-                    spider = spiders.get(jaKey);
-                    if (spider == null) {
-                        log.error(
-                                "loadJar succeed, but spider is null. key={}, api={}, ext={}, jar={}",
-                                key, api, ext, jar
-                        );
-                        return Spider.getEmpty();
-                    }
+                    spider = spiders.get(spKey);
+                }
+                if (ext == null) {
+                    ext = StringUtils.EMPTY;
                 }
             } else {
                 if (loaders.get(jaKey) == null) {
@@ -114,9 +110,11 @@ public class SpiderJarLoader {
                 }
                 String classPath = SPIDER_PACKAGE_NAME + api.replace("csp_", ".");
                 spider = loader.loadClass(classPath).getDeclaredConstructor().newInstance();
-                SpiderInvokeUtil.init(spider, ext);
-                spiders.put(spKey, spider);
             }
+            if (spider == null || !SpiderInvokeUtil.init(spider, ext)) {
+                spider = Spider.getEmpty();
+            }
+            spiders.put(spKey, spider);
 
             return spider;
         } catch (Exception e){
@@ -189,34 +187,31 @@ public class SpiderJarLoader {
     }
 
     private boolean load(String key, Path jar, boolean jsFlag) {
-        JSSpider jsSpider;
-
         log.info("load jar {}", jar);
         if (jsFlag) {
-            jsSpider = new JSSpider(key, jar);
-            spiders.put(key, jsSpider);
-            invokeInit(jsSpider);
-        } else {
-            if (!isJarAvailable(jar)) {
-                log.info("invalid jar: {}", jar);
-                Platform.runLater(() -> ToastHelper.showErrorAlert(
-                        I18nKeys.ERROR,
-                        I18nKeys.TV_ERROR_INVALID_SPIDER_JAR,
-                        null
-                ));
+            spiders.put(key, new JSSpider(key, jar));
 
-                return false;
-            }
-            try {
-                loaders.put(key, new URLClassLoader(new URL[]{jar.toUri().toURL()}, this.getClass().getClassLoader()));
-            } catch (MalformedURLException e) {
-                Platform.runLater(() -> ToastHelper.showException(e));
-
-                return false;
-            }
-            putProxy(key);
-            invokeInit(key);
+            return true;
         }
+        if (!isJarAvailable(jar)) {
+            log.info("invalid jar: {}", jar);
+            Platform.runLater(() -> ToastHelper.showErrorAlert(
+                    I18nKeys.ERROR,
+                    I18nKeys.TV_ERROR_INVALID_SPIDER_JAR,
+                    null
+            ));
+
+            return false;
+        }
+        try {
+            loaders.put(key, new URLClassLoader(new URL[]{jar.toUri().toURL()}, this.getClass().getClassLoader()));
+        } catch (MalformedURLException e) {
+            Platform.runLater(() -> ToastHelper.showException(e));
+
+            return false;
+        }
+        putProxy(key);
+        invokeInit(key);
 
         return true;
     }
@@ -263,7 +258,12 @@ public class SpiderJarLoader {
         }
     }
 
-    private void invokeInit(String key) {
+    /**
+     * 执行Java爬虫的初始化Init类
+     * @param key 爬虫key（jaKey）
+     * @return 是否初始化成功
+     */
+    private boolean invokeInit(String key) {
         URLClassLoader classLoader = loaders.get(key);
         Class<?> clazz;
         Method method;
@@ -275,6 +275,8 @@ public class SpiderJarLoader {
             clazz = classLoader.loadClass(SPIDER_INIT_CLASS_NAME);
             method = clazz.getMethod("init");
             method.invoke(clazz);
+
+            return true;
         } catch (
                 ClassNotFoundException |
                 NoSuchMethodException |
@@ -282,15 +284,8 @@ public class SpiderJarLoader {
                 InvocationTargetException e
         ) {
             Platform.runLater(() -> ToastHelper.showException(e));
-        }
-    }
 
-    private void invokeInit(JSSpider jsSpider) {
-        try {
-            jsSpider.init(null);
-        } catch (Exception e) {
-            log.error("js spider invokeInit error, jaKey={}", jsSpider.getSiteKey(), e);
-            Platform.runLater(() -> ToastHelper.showErrorI18n(I18nKeys.ERROR_SPIDER_INVOKE_FAILED));
+            return false;
         }
     }
 

@@ -85,7 +85,7 @@ public class JSGlobal {
     private void bindMethod(Value globalBindings, Method method) {
         Class<?>[] paramTypes = method.getParameterTypes();
 
-        log.info("bind method: {}", method.getName());
+        log.debug("bind method: {}", method.getName());
         globalBindings.putMember(method.getName(), (ProxyExecutable) arguments -> {
             Object[] convertedArgs = null;
             Class<?> paramType;

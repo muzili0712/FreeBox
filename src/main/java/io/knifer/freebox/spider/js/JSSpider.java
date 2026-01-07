@@ -241,7 +241,7 @@ public class JSSpider extends Spider {
         log.info("initialize GraalJs context succeed");
         // 初始化JS爬虫
         spiderJsCode = Files.readString(jar);
-        log.info("initialize js spider......\njs code size: {}", spiderJsCode.length());
+        log.info("initialize js spider, js code size: {}", spiderJsCode.length());
         spiderSource = Source.newBuilder("js", spiderJsCode, jar.getFileName().toString())
                 .mimeType("application/javascript+module")
                 .build();
