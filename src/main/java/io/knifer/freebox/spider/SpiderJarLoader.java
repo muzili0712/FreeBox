@@ -4,6 +4,7 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.crypto.digest.DigestUtil;
 import com.github.catvod.crawler.spider.Spider;
 import io.knifer.freebox.constant.I18nKeys;
+import io.knifer.freebox.context.Context;
 import io.knifer.freebox.helper.StorageHelper;
 import io.knifer.freebox.helper.ToastHelper;
 import io.knifer.freebox.model.domain.FreeBoxApiConfig;
@@ -28,7 +29,9 @@ import java.nio.file.Paths;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -66,6 +69,11 @@ public class SpiderJarLoader {
 
     public static SpiderJarLoader getInstance() {
         return INSTANCE;
+    }
+
+    @Nullable
+    public Object getSpider() {
+        return spiders.get(recent);
     }
 
     public Object getSpider(String key, String api, String ext, String jar) {
@@ -281,7 +289,8 @@ public class SpiderJarLoader {
         try {
             jsSpider.init(null);
         } catch (Exception e) {
-            Platform.runLater(() -> ToastHelper.showException(e));
+            log.error("js spider invokeInit error, jaKey={}", jsSpider.getSiteKey(), e);
+            Platform.runLater(() -> ToastHelper.showErrorI18n(I18nKeys.ERROR_SPIDER_INVOKE_FAILED));
         }
     }
 
@@ -299,14 +308,37 @@ public class SpiderJarLoader {
     }
 
     public Object[] proxyInvoke(Map<String, String> params) {
-        Method proxyMethod = methods.get(recent);
+        String doVal = params.get("do");
+        Object recentSpider;
+        Method proxyMethod;
+        CompletableFuture<Object[]> resultFuture;
         Object[] result;
 
-        try {
-            result = CastUtil.cast(proxyMethod.invoke(null, params));
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            result = ArrayUtils.EMPTY_OBJECT_ARRAY;
-            log.warn("proxyInvoke error, proxyMethod={}", proxyMethod, e);
+        if ("proxy".equalsIgnoreCase(doVal)) {
+            // java 爬虫代理
+            proxyMethod = methods.get(recent);
+            try {
+                result = CastUtil.cast(proxyMethod.invoke(null, params));
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                result = ArrayUtils.EMPTY_OBJECT_ARRAY;
+                log.warn("proxyInvoke error, proxyMethod={}", proxyMethod, e);
+            }
+        } else {
+            // 其他语言爬虫代理
+            recentSpider = spiders.get(recent);
+            if (recentSpider == null) {
+                result = ArrayUtils.EMPTY_OBJECT_ARRAY;
+                log.warn("proxyInvoke error, can't find recent spider. recent={}", recent);
+            } else {
+                resultFuture = new CompletableFuture<>();
+                Platform.runLater(() -> Context.INSTANCE.getSpiderTemplate().proxy(resultFuture::complete, params));
+                try {
+                    result = resultFuture.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    result = ArrayUtils.EMPTY_OBJECT_ARRAY;
+                    log.warn("proxyInvoke error, recentSpider={}", recentSpider, e);
+                }
+            }
         }
 
         return result;

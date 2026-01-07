@@ -1,5 +1,7 @@
 package io.knifer.freebox.spider.js;
 
+import cn.hutool.core.codec.Base64;
+import com.fongmi.quickjs.bean.Res;
 import com.github.catvod.crawler.spider.Spider;
 import io.knifer.freebox.constant.BaseResources;
 import io.knifer.freebox.util.json.GsonUtil;
@@ -11,11 +13,15 @@ import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.io.IOAccess;
 
+import javax.annotation.Nullable;
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * JS 爬虫
@@ -114,6 +120,84 @@ public class JSSpider extends Spider {
     @Override
     public boolean isVideoFormat(String url) throws Exception {
         return (Boolean) call("isVideo", url);
+    }
+
+    public Object[] proxy(Map<String, String> params) throws Exception {
+        return "catvod".equals(params.get("from")) ? proxy2(params) : proxy1(params);
+    }
+
+    private Object[] proxy1(Map<String, String> params) {
+        Value proxyResultArray = jsonParseFunction.execute(spiderObject.invokeMember("proxy", params));
+        long resultArrayLength;
+        Map<String, String> headers;
+        boolean base64;
+        Object[] result;
+
+        if (!proxyResultArray.hasArrayElements()) {
+
+            return null;
+        }
+        resultArrayLength = proxyResultArray.getArraySize();
+        headers = resultArrayLength > 3 ?
+                GsonUtil.toStringMap(proxyResultArray.getArrayElement(3).asString()) : null;
+        base64 = resultArrayLength > 4 && proxyResultArray.getArrayElement(4).asInt() == 1;
+        result = new Object[4];
+        result[0] = proxyResultArray.getArrayElement(0).asInt();
+        result[1] = proxyResultArray.getArrayElement(1).asString();
+        result[2] = getStream(proxyResultArray.getArrayElement(2), base64);
+        result[3] = headers;
+
+        return result;
+    }
+
+    private ByteArrayInputStream getStream(Value jsValue, boolean base64) {
+        String content;
+        byte[] bytes = toByteArray(jsValue);
+
+        if (bytes != null) {
+
+            return new ByteArrayInputStream(bytes);
+        } else {
+            content = jsValue.asString();
+            if (base64 && content.contains("base64,")) {
+                content = content.split("base64,")[1];
+            }
+
+            return new ByteArrayInputStream(base64 ? Base64.decode(content) : content.getBytes());
+        }
+    }
+
+    @Nullable
+    private static byte[] toByteArray(Value value) {
+        Object hostObj;
+
+        if (value == null || value.isNull()) {
+
+            return null;
+        }
+        if (value.isHostObject()) {
+            hostObj = value.asHostObject();
+
+            return hostObj instanceof byte[] ? (byte[]) hostObj : null;
+        }
+
+        return null;
+    }
+
+    private Object[] proxy2(Map<String, String> params) throws Exception {
+        String url = params.get("url");
+        String header = params.get("header");
+        Value array = Value.asValue(url.split("/"));
+        Object headerObject = jsonParseFunction.execute(header);
+        String json = (String) call("proxy", array, headerObject);
+        Res res = GsonUtil.fromJson(json, Res.class);
+        Object[] result = new Object[3];
+
+        result[0] = res.getCode();
+        result[1] = res.getContentType();
+        result[2] = res.getStream();
+
+        return result;
     }
 
     private Object call(String function, Object... args) throws Exception {

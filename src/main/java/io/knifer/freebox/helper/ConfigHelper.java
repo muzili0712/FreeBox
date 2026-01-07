@@ -31,7 +31,7 @@ public class ConfigHelper {
 
     private static final AtomicBoolean updateFlag = new AtomicBoolean(false);
 
-    private static final String PROXY_URL_F = "http://%s:%d/";
+    private static final String PROXY_URL_F = "http://%s:%d/proxy";
 
     public synchronized void setServiceIPv4(String serviceIPv4) {
         assertIfConfigLoaded();

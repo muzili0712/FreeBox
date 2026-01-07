@@ -1,7 +1,6 @@
 package io.knifer.freebox.controller;
 
 import cn.hutool.core.collection.CollUtil;
-import com.google.common.base.Charsets;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.net.HttpHeaders;
@@ -61,7 +60,6 @@ import org.kordamp.ikonli.fontawesome.FontAwesome;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import javax.annotation.Nullable;
-import java.net.URLDecoder;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -467,7 +465,6 @@ public class VideoController extends BaseController implements Destroyable {
                             ToastHelper.showErrorI18n(I18nKeys.VIDEO_ERROR_NO_DATA);
                             return;
                         }
-                        playUrl = URLDecoder.decode(playUrl, Charsets.UTF_8);
                         elm = propsObj.get("parse");
                         parse = elm == null ? 0 : elm.getAsInt();
                         elm = propsObj.get("jx");

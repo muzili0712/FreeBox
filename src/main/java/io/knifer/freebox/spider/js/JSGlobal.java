@@ -150,7 +150,7 @@ public class JSGlobal {
 
     @HostAccess.Export
     public String getProxy(Boolean local) {
-        return ConfigHelper.getProxyUrl(BooleanUtils.isNotFalse(local));
+        return ConfigHelper.getProxyUrl(BooleanUtils.isNotFalse(local)) + "?do=js";
     }
 
     @HostAccess.Export

@@ -84,7 +84,7 @@ public class ImageHelper {
         Pair<String, Map<String, String>> fixedImageUrlAndHeaderMap;
         Request request;
 
-        if (!ValidationUtil.isURL(imageUrl)) {
+        if (imageUrl.contains(StrPool.AT)) {
             if (isRetrying) {
                 future.complete(DEFAULT_RESULT);
 

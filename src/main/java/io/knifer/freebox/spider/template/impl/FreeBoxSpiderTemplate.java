@@ -479,4 +479,9 @@ public class FreeBoxSpiderTemplate implements SpiderTemplate {
     public void getLives(Consumer<List<FreeBoxLive>> callback) {
         callback.accept(ObjectUtils.defaultIfNull(apiConfig.getLives(), List.of()));
     }
+
+    @Override
+    public void proxy(Consumer<Object[]> callback, Map<String, String> params) {
+        EXECUTOR.execute(() -> SpiderTemplate.super.proxy(callback, params));
+    }
 }
