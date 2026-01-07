@@ -1,5 +1,4 @@
 module io.knifer.freebox {
-    requires java.sql;
     requires java.desktop;
     requires jdk.httpserver;
 
@@ -19,7 +18,8 @@ module io.knifer.freebox {
     requires uk.co.caprica.vlcj.javafx;
     requires uk.co.caprica.vlcj.natives;
     requires org.slf4j;
-    requires org.slf4j.simple;
+    requires org.tinylog.api;
+    requires org.tinylog.impl;
     requires filelize;
     requires com.fasterxml.jackson.databind;
     requires okhttp3;
@@ -68,4 +68,6 @@ module io.knifer.freebox {
     opens io.knifer.freebox.model.c2s to com.fasterxml.jackson.databind, com.google.gson, filelize;
     opens io.knifer.freebox.model.s2c to com.google.gson;
     opens io.knifer.freebox.spider to com.google.gson;
+    opens io.knifer.freebox.log.provider to org.tinylog.api;
+    opens io.knifer.freebox.log.writer to org.tinylog.api;
 }

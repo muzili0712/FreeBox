@@ -5,6 +5,7 @@ import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinBase;
 import io.knifer.freebox.constant.*;
 import io.knifer.freebox.exception.FBException;
+import io.knifer.freebox.log.provider.ReconfigurableLoggingProvider;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.lang3.ArchUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -12,6 +13,7 @@ import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.arch.Processor;
 
 import javax.swing.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 系统相关
@@ -27,7 +29,9 @@ public class SystemHelper {
     private final static io.knifer.freebox.constant.Platform CURRENT_PLATFORM;
     private final static Architecture CURRENT_ARCHITECTURE;
     private final static EnvProfile ENV_PROFILE = EnvProfile.valueOf(System.getProperty("freebox.profile"));
-    private final static boolean DEBUG_FLAG = "true".equals(BaseResources.X_PROPERTIES.getProperty(BaseValues.X_DEBUG));
+    private final static AtomicBoolean DEBUG_FLAG = new AtomicBoolean(
+            "true".equals(BaseResources.X_PROPERTIES.getProperty(BaseValues.X_DEBUG))
+    );
 
     static {
         String exeResult;
@@ -103,10 +107,22 @@ public class SystemHelper {
     }
 
     public boolean isDebug() {
-        return DEBUG_FLAG;
+        return DEBUG_FLAG.get();
     }
 
     public EnvProfile getEnvProfile() {
         return ENV_PROFILE;
+    }
+
+    public void setDebugMode(boolean debug) {
+        if (debug != DEBUG_FLAG.get()) {
+            DEBUG_FLAG.set(debug);
+            System.setProperty("tinylog.writerConsole.level", debug ? "debug" : "info");
+            try {
+                ReconfigurableLoggingProvider.reload();
+            } catch (InterruptedException | ReflectiveOperationException e) {
+                javafx.application.Platform.runLater(() -> ToastHelper.showException(e));
+            }
+        }
     }
 }

@@ -55,7 +55,7 @@ ext {
             guava: '33.2.1-jre',
             lang3: '3.16.0',
             javaWebSocket: '1.6.0',
-            slf4jSimple: '2.1.0-alpha1',
+            tinylog: '2.7.0',
             blockingMap: '0.91',
             vlcjJavaFX: '1.2.0',
             vlcj: '4.8.3',
@@ -85,7 +85,8 @@ dependencies {
     implementation "com.google.guava:guava:${dv.guava}"
     implementation "org.apache.commons:commons-lang3:${dv.lang3}"
     implementation "org.java-websocket:Java-WebSocket:${dv.javaWebSocket}"
-    implementation "org.slf4j:slf4j-simple:${dv.slf4jSimple}"
+    implementation "org.tinylog:slf4j-tinylog:${dv.tinylog}"
+    implementation "org.tinylog:tinylog-impl:${dv.tinylog}"
     implementation "com.github.sarveswaran-m:util.concurrent.blockingMap:${dv.blockingMap}"
     implementation "uk.co.caprica:vlcj:${dv.vlcj}"
     implementation "uk.co.caprica:vlcj-javafx:${dv.vlcjJavaFX}"
@@ -106,6 +107,8 @@ dependencies {
     implementation("io.github.kknifer7:mpv:${dv.mpv}") {
         // vlcj依赖中已包含模块化的高版本jna，所以这里排除
         exclude group: 'net.java.dev.jna'
+        // 排除日志依赖，统一使用tinylog
+        exclude module: 'slf4j-simple'
     }
     implementation "org.graalvm.polyglot:polyglot:${dv.graal}"
     implementation "org.graalvm.js:js-language:${dv.graal}"
@@ -192,7 +195,8 @@ run {
             '--add-exports=javafx.base/com.sun.javafx.event=org.controlsfx.controls',
             '--add-opens=org.controlsfx.controls/org.controlsfx.control=io.knifer.freebox',
             '--add-opens=javafx.graphics/javafx.scene=org.controlsfx.controls',
-            '--add-opens=javafx.graphics/javafx.scene.text=cn.hutool.core'
+            '--add-opens=javafx.graphics/javafx.scene.text=cn.hutool.core',
+            '--add-opens=org.tinylog.api/org.tinylog.configuration=io.knifer.freebox'
     ]
     if (gradle.startParameter.taskNames.contains('jpackage')) {
         jvmArgs += [
